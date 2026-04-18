@@ -9,7 +9,7 @@ tags:
   - multi-objective optimization
 authors:
   - name: Tadashi Mazusaki
-    orcid: 0000-0000-0000-0000
+    orcid: 0009-0005-2463-9380
     affiliation: 1
 affiliations:
   - name: Da-P-AIP, Independent Researcher
