@@ -1,5 +1,7 @@
 # Axis-HFE — Hypothesis Field Engine
 
+[![DOI](https://zenodo.org/badge/1214418833.svg)](https://doi.org/10.5281/zenodo.19645298)
+
 > **"From selecting an answer, to creating one."**
 
 Hypothesis Field Engine (HFE) is a Python library that transforms AI reasoning from single-answer generation into **multi-dimensional hypothesis space exploration**.
