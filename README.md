@@ -1,5 +1,6 @@
 # Axis-HFE — Hypothesis Field Engine
 
+[![PyPI version](https://badge.fury.io/py/axis-hfe.svg)](https://pypi.org/project/axis-hfe/)
 [![DOI](https://zenodo.org/badge/1214418833.svg)](https://doi.org/10.5281/zenodo.19645298)
 
 > **"From selecting an answer, to creating one."**
