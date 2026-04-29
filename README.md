@@ -93,7 +93,7 @@ iter 2  ──  leap exploration added  [1.12 – 1.16]  ↑ divergent candidate
 iter 3  ──  convergence             [1.16 – 1.18]  ↑ optimal synthesis
 ```
 
-> Scores above 1.0 are possible because the weighted distance formula rewards hypotheses that **exceed** the ideal on high-weight axes (accuracy, feasibility).
+> Scores above 1.0 are possible because the base inverse-distance score (`1 / (1 + distance)`) is combined with an additional **Relational Layer bonus**, which rewards mutual understanding, alignment, and harmony.
 
 ---
 
@@ -127,7 +127,7 @@ from hypothesis_field import HypothesisFieldEngine, EngineConfig
 
 config = EngineConfig(
     provider="ollama",
-    model="gemma4:e4b",
+    model="gemma3:12b",
     ideal_preset="default",
     iterations=3,
 )
@@ -202,7 +202,7 @@ result = asyncio.run(engine.run("Test problem"))
 
 | provider | default model |
 |---|---|
-| `ollama` | `gemma4:e4b` |
+| `ollama` | `gemma3:12b` |
 | `openai` | `gpt-4o` |
 | `anthropic` | `claude-sonnet-4-6` |
 
@@ -234,7 +234,7 @@ result = asyncio.run(engine.run("Test problem"))
 
 ## Benchmark results
 
-Tested on multiple complex problem domains using `gemma4:e4b` via Ollama, `iterations=3`, `preset=creative`.
+Tested on multiple complex problem domains using `gemma3:12b` via Ollama, `iterations=3`, `preset=creative`.
 
 ### Score progression across iterations
 
@@ -319,6 +319,9 @@ HFE's reasoning loop includes, alongside technical evaluation axes (accuracy, no
 This reflects the belief that AI reasoning should not only produce *correct* answers, but answers shaped by **mutual consideration** — awareness of relationships, long-term stability, and non-exploitative design.
 
 A great hypothesis is not only logically sound. It is one that holds harmony with the people involved.
+
+> *互いを思いやる心、相対尊厳を忘れずにいてくれたらうれしいです。*
+> *(We hope you carry with you the spirit of mutual dignity — caring for one another.)*
 
 ---
 

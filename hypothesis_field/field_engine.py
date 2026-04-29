@@ -62,6 +62,11 @@ class EngineConfig:
     def __post_init__(self) -> None:
         """DoS対策: パラメータ範囲を早期検証する。"""
         validate_engine_params(self.iterations, self.hypothesis_count)
+        if self.custom_ideal is None and self.ideal_preset not in IDEAL_PRESETS:
+            raise ValueError(
+                f"Unknown ideal_preset: {self.ideal_preset!r}. "
+                f"Available: {list(IDEAL_PRESETS.keys())}"
+            )
 
     def __repr__(self) -> str:
         """api_key をマスクして repr に含める。ログ・例外トレースへの漏洩を防ぐ。"""
@@ -149,21 +154,22 @@ class HypothesisFieldEngine:
         self,
         problem: Union[str, List[Hypothesis]],
         iterations: Optional[int] = None,
-        count: int = 3,
+        count: Optional[int] = None,
     ) -> FieldResult:
         """
         問題文字列または仮説リストを受け取り、進化ループを回して最良仮説を返す。
 
         Args:
             problem:    問題テキスト（str）または仮説リスト（List[Hypothesis]）
-            iterations: ループ回数（None なら EngineConfig の値を使う）
-            count:      初期仮説生成数（problem が str の場合のみ使用）
+            iterations: ループ回数（None なら EngineConfig.iterations を使う）
+            count:      初期仮説生成数（None なら EngineConfig.hypothesis_count を使う）
         """
         iters = iterations if iterations is not None else self._config.iterations
+        n_hyp = count if count is not None else self._config.hypothesis_count
 
         if isinstance(problem, str):
             problem = sanitize_input(problem, max_length=MAX_PROBLEM_LENGTH)
-            hypotheses = await self._generator.generate(problem, count=count)
+            hypotheses = await self._generator.generate(problem, count=n_hyp)
         else:
             hypotheses = problem
 

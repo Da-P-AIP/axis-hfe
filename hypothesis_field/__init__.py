@@ -27,7 +27,7 @@ from ._providers._ollama import OllamaClient
 from ._providers._openai import OpenAIClient
 from ._providers._anthropic import AnthropicClient
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "Da-P (Da-P-AIP)"
 
 __all__ = [

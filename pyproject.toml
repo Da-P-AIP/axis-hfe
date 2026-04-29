@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "axis-hfe"
-version = "0.1.0"
+version = "0.2.0"
 description = "Hypothesis Field Engine — 多次元空間推論ライブラリ"
 readme = "README.md"
 license = { file = "LICENSE" }

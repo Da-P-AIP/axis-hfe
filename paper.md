@@ -78,7 +78,7 @@ Because the library is intended for embedding in applications that accept untrus
 
 ## Emergent Synthesis
 
-In benchmark tests using `gemma4:4b` via Ollama with `iterations=3` and the `creative` preset, the best-ranked hypothesis after evolution was consistently a synthesis that did not appear in the initial generation. In one business-domain test, the engine produced a pricing model innovation that was absent from all three seed hypotheses, combining stability properties from one, novelty from another, and emotional value from a third. This emergent behavior — answers constructed outside the initial hypothesis space — is the core design goal of Axis-HFE.
+In benchmark tests using `gemma3:12b` via Ollama with `iterations=3` and the `creative` preset, the best-ranked hypothesis after evolution was consistently a synthesis that did not appear in the initial generation. In one business-domain test, the engine produced a pricing model innovation that was absent from all three seed hypotheses, combining stability properties from one, novelty from another, and emotional value from a third. This emergent behavior — answers constructed outside the initial hypothesis space — is the core design goal of Axis-HFE.
 
 # Acknowledgements
 

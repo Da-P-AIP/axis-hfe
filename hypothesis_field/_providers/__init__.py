@@ -10,7 +10,7 @@ from ._base import LLMResponse
 
 # プロバイダーごとのデフォルトモデル
 DEFAULT_MODELS: dict[str, str] = {
-    "ollama":    "gemma4:e4b",
+    "ollama":    "gemma3:12b",
     "openai":    "gpt-4o",
     "anthropic": "claude-sonnet-4-6",
 }
