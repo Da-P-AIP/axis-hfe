@@ -34,6 +34,7 @@ class EngineConfig:
         - "ollama"    : ローカル Ollama（追加インストール不要）
         - "openai"    : ChatGPT / GPT-4o  （pip install axis-hfe[openai]）
         - "anthropic" : Claude             （pip install axis-hfe[anthropic]）
+        - "gemini"    : Google Gemini      （pip install axis-hfe[gemini]）
 
     Examples:
         # Ollama（デフォルト）
@@ -48,7 +49,7 @@ class EngineConfig:
         # テスト用（LLMなし）
         config = EngineConfig(mock_llm=True)
     """
-    provider: str = "ollama"           # "ollama" / "openai" / "anthropic"
+    provider: str = "ollama"           # "ollama" / "openai" / "anthropic" / "gemini"
     model: Optional[str] = None        # None → プロバイダーのデフォルトモデルを使用
     api_key: Optional[str] = None      # OpenAI / Anthropic の API キー（None → 環境変数）
     ollama_base_url: str = "http://localhost:11434"

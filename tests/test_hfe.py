@@ -320,11 +320,11 @@ def test_create_client_anthropic_returns_anthropic_client():
 
 def test_create_client_unknown_provider_raises():
     with pytest.raises(ValueError, match="未知のプロバイダー"):
-        create_client("gemini")
+        create_client("nonexistent-llm")
 
 
 def test_engine_config_unknown_provider_raises_on_init():
-    config = EngineConfig(provider="gemini", mock_llm=False)
+    config = EngineConfig(provider="nonexistent-llm", mock_llm=False)
     with pytest.raises(ValueError):
         HypothesisFieldEngine(config)
 
@@ -360,6 +360,42 @@ def test_openai_client_explicit_key_takes_priority(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "env-key")
     client = OpenAIClient(api_key="explicit-key")
     assert client._api_key == "explicit-key"
+
+
+def test_engine_config_resolved_model_gemini():
+    config = EngineConfig(provider="gemini")
+    assert config.resolved_model() == DEFAULT_MODELS["gemini"]
+
+
+def test_create_client_gemini_returns_gemini_client(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+    from hypothesis_field._providers._gemini import GeminiClient
+    client = create_client("gemini")
+    assert isinstance(client, GeminiClient)
+
+
+def test_gemini_client_uses_env_api_key(monkeypatch):
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key-from-env")
+    from hypothesis_field._providers._gemini import GeminiClient
+    client = GeminiClient()
+    assert client._api_key == "test-key-from-env"
+
+
+def test_gemini_client_falls_back_to_google_api_key(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-google-key")
+    from hypothesis_field._providers._gemini import GeminiClient
+    client = GeminiClient()
+    assert client._api_key == "test-google-key"
+
+
+def test_gemini_client_raises_without_api_key(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    from hypothesis_field._providers._gemini import GeminiClient
+    with pytest.raises(ValueError, match="API"):
+        GeminiClient()
 
 
 # ---------------------------------------------------------------------------
@@ -429,6 +465,13 @@ def test_mask_secrets_replaces_openai_key():
 def test_mask_secrets_replaces_anthropic_key():
     text = "key=sk-ant-abcdef123456"
     assert "sk-***MASKED***" in mask_secrets(text)
+
+
+def test_mask_secrets_replaces_gemini_key():
+    text = "api_key=AIzaSyAbCdEfGhIjKlMnOpQrStUvWxYz012345"
+    result = mask_secrets(text)
+    assert "AIzaSy" not in result
+    assert "MASKED" in result
 
 
 def test_mask_secrets_passes_clean_text():

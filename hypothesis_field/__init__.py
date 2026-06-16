@@ -26,8 +26,9 @@ from ._providers import DEFAULT_MODELS, SUPPORTED_PROVIDERS, create_client
 from ._providers._ollama import OllamaClient
 from ._providers._openai import OpenAIClient
 from ._providers._anthropic import AnthropicClient
+from ._providers._gemini import GeminiClient
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __author__ = "Da-P (Da-P-AIP)"
 
 __all__ = [
@@ -39,6 +40,7 @@ __all__ = [
     "OllamaClient",
     "OpenAIClient",
     "AnthropicClient",
+    "GeminiClient",
     "create_client",
     "DEFAULT_MODELS",
     "SUPPORTED_PROVIDERS",

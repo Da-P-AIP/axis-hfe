@@ -26,7 +26,7 @@ _BLOCKED_HOSTS: tuple[str, ...] = (
 
 # ログ等に漏洩しやすいパターン（マスク用）
 _SECRET_PATTERN = re.compile(
-    r'(sk-[A-Za-z0-9\-_]{10,}|sk-ant-[A-Za-z0-9\-_]{10,})',
+    r'(sk-[A-Za-z0-9\-_]{10,}|sk-ant-[A-Za-z0-9\-_]{10,}|AIza[A-Za-z0-9\-_]{20,})',
     re.IGNORECASE,
 )
 

@@ -13,6 +13,7 @@ DEFAULT_MODELS: dict[str, str] = {
     "ollama":    "gemma3:12b",
     "openai":    "gpt-4o",
     "anthropic": "claude-sonnet-4-6",
+    "gemini":    "gemini-2.5-flash",
 }
 
 SUPPORTED_PROVIDERS = list(DEFAULT_MODELS.keys())
@@ -49,6 +50,9 @@ def create_client(
     elif provider == "anthropic":
         from ._anthropic import AnthropicClient
         return AnthropicClient(api_key=api_key, timeout=timeout)
+    elif provider == "gemini":
+        from ._gemini import GeminiClient
+        return GeminiClient(api_key=api_key, timeout=timeout)
     else:
         raise ValueError(
             f"未知のプロバイダー: '{provider}'\n"
