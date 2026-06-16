@@ -513,3 +513,58 @@ def test_anthropic_client_raises_without_api_key(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     with pytest.raises(ValueError, match="API"):
         AnthropicClient()
+
+
+# ─── 12. Gemini JSON サニタイズ ─────────────────────────────────────────────
+
+from hypothesis_field._providers._gemini import _strip_json_fences
+
+
+def test_strip_json_fences_plain_json():
+    raw = '[{"id": "H1", "content": "test"}]'
+    assert _strip_json_fences(raw) == raw
+
+
+def test_strip_json_fences_with_json_tag():
+    fenced = '```json\n[{"id": "H1", "content": "test"}]\n```'
+    assert _strip_json_fences(fenced) == '[{"id": "H1", "content": "test"}]'
+
+
+def test_strip_json_fences_without_language_tag():
+    fenced = '```\n[{"id": "H1", "content": "test"}]\n```'
+    assert _strip_json_fences(fenced) == '[{"id": "H1", "content": "test"}]'
+
+
+def test_strip_json_fences_with_surrounding_whitespace():
+    fenced = '  ```json\n{"key": "value"}\n```  '
+    assert _strip_json_fences(fenced) == '{"key": "value"}'
+
+
+def test_extract_json_array_from_fenced_gemini_response():
+    gen = HypothesisGenerator(llm_client=None)
+    fenced = (
+        '```json\n'
+        '[{"id":"H1","content":"approach A",'
+        '"accuracy":0.85,"consistency":0.80,"risk":0.15,'
+        '"novelty":0.50,"feasibility":0.90,"divergence":0.30}]\n'
+        '```'
+    )
+    result = gen._extract_json_array(fenced)
+    assert len(result) == 1
+    assert result[0]["id"] == "H1"
+
+
+def test_extract_json_array_from_prefixed_gemini_response():
+    gen = HypothesisGenerator(llm_client=None)
+    prefixed = (
+        'Here are 2 hypotheses:\n'
+        '[{"id":"H1","content":"approach A",'
+        '"accuracy":0.85,"consistency":0.80,"risk":0.15,'
+        '"novelty":0.50,"feasibility":0.90,"divergence":0.30},'
+        '{"id":"H2","content":"approach B",'
+        '"accuracy":0.70,"consistency":0.75,"risk":0.25,'
+        '"novelty":0.65,"feasibility":0.80,"divergence":0.55}]'
+    )
+    result = gen._extract_json_array(prefixed)
+    assert len(result) == 2
+    assert result[1]["id"] == "H2"

@@ -14,6 +14,25 @@ from ._base import LLMResponse
 logger = logging.getLogger(__name__)
 
 
+def _strip_json_fences(text: str) -> str:
+    """Geminiが返すmarkdownコードフェンス（```json ... ```）を除去する。
+
+    response_mime_type="application/json" を設定しても古いモデルや
+    一部ケースでフェンス付き出力になる場合の保険として呼ぶ。
+    """
+    text = text.strip()
+    # 開きフェンス (```json または ```) を除去
+    if text.startswith("```"):
+        newline = text.find("\n")
+        if newline != -1:
+            text = text[newline + 1:]
+    # 閉じフェンスを除去
+    text = text.rstrip()
+    if text.endswith("```"):
+        text = text[:-3].rstrip()
+    return text.strip()
+
+
 class GeminiClient:
     """
     Google Gemini API への非同期クライアント。
@@ -68,6 +87,9 @@ class GeminiClient:
             temperature=temperature,
             max_output_tokens=max_tokens,
             system_instruction=system,
+            # JSON出力モードを強制: Geminiがmarkdownフェンスや説明文を付けずに
+            # 純粋なJSONを返すようにする。これがmock-fallbackの根本修正。
+            response_mime_type="application/json",
         )
 
         logger.debug(f"[Gemini] model={model} prompt_len={len(prompt)}")
@@ -79,8 +101,9 @@ class GeminiClient:
         )
 
         usage = getattr(resp, "usage_metadata", None)
+        # _strip_json_fences は response_mime_type が効かない場合の保険
         return LLMResponse(
-            content=resp.text,
+            content=_strip_json_fences(resp.text),
             model=model,
             tokens_used=getattr(usage, "total_token_count", 0) or 0,
         )
