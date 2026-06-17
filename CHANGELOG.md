@@ -1,5 +1,28 @@
 # Changelog — axis-hfe
 
+## [0.4.1] — 2026-06-17
+
+### Fixed
+- **Gemini: JSONモード＋スキーマを全パイプライン呼び出しに適用、パース失敗リトライ、mock_llm=False 時の fail-loud 化**
+  - `GeminiClient.generate()` に `response_schema` パラメータを追加し、
+    呼び出し側（generator/vectorizer）が期待するJSON構造（配列/オブジェクト）を
+    `GenerateContentConfig.response_schema` で固定できるようにした。
+    これにより `response_mime_type` だけでなく構造レベルでも応答を拘束する。
+  - `hypothesis_field/_json_utils.py` を新設し、全LLM応答の `json.loads` 前に通す
+    共通サニタイザ（`strip_fences` / `extract_json_array` / `extract_json_object`）を提供。
+    generator と vectorizer の両方で使用する。
+  - `HypothesisGenerator` と `Vectorizer` にパース失敗時リトライを追加（最大2回再試行）。
+    JSONが抽出できない場合は同じプロンプトで最大3回試みてから判断する。
+  - `fail_loud` フラグを追加（`HypothesisGenerator`/`Vectorizer`）:
+    `mock_llm=False`（実プロバイダー指定）時は全リトライ消費後に例外を上げ、
+    **絶対に mock 定数へ無言フォールバックしない**。`mock_llm=True` 時は既存の
+    サイレントフォールバック挙動を維持する。
+  - `HypothesisFieldEngine` が `fail_loud=not config.mock_llm` を
+    Generator/Vectorizer に自動伝播するよう修正。
+
+### Changed
+- バージョン: `0.4.0` → `0.4.1`（バグ修正パッチ）
+
 ## [0.4.0] — 2026-06-17
 
 ### Fixed

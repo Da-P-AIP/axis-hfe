@@ -71,6 +71,7 @@ class GeminiClient:
         temperature: float = 0.7,
         max_tokens: int = 2048,
         system: Optional[str] = None,  # プロンプトインジェクション対策: 指示を分離
+        response_schema: Optional[Any] = None,  # JSON応答の構造を固定するスキーマ
         **_: Any,
     ) -> LLMResponse:
         try:
@@ -83,16 +84,25 @@ class GeminiClient:
             )
 
         client = genai.Client(api_key=self._api_key)
-        cfg = types.GenerateContentConfig(
-            temperature=temperature,
-            max_output_tokens=max_tokens,
-            system_instruction=system,
+
+        cfg_kwargs: dict[str, Any] = {
+            "temperature": temperature,
+            "max_output_tokens": max_tokens,
+            "system_instruction": system,
             # JSON出力モードを強制: Geminiがmarkdownフェンスや説明文を付けずに
             # 純粋なJSONを返すようにする。これがmock-fallbackの根本修正。
-            response_mime_type="application/json",
-        )
+            "response_mime_type": "application/json",
+        }
+        if response_schema is not None:
+            # 応答の「形」まで固定することでパース失敗率をさらに下げる
+            cfg_kwargs["response_schema"] = response_schema
 
-        logger.debug(f"[Gemini] model={model} prompt_len={len(prompt)}")
+        cfg = types.GenerateContentConfig(**cfg_kwargs)
+
+        logger.debug(
+            f"[Gemini] model={model} prompt_len={len(prompt)} "
+            f"has_schema={response_schema is not None}"
+        )
 
         resp = await client.aio.models.generate_content(
             model=model,

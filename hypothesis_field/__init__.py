@@ -28,7 +28,7 @@ from ._providers._openai import OpenAIClient
 from ._providers._anthropic import AnthropicClient
 from ._providers._gemini import GeminiClient
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 __author__ = "Da-P (Da-P-AIP)"
 
 __all__ = [

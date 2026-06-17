@@ -144,8 +144,9 @@ class HypothesisFieldEngine:
         self.ideal   = ideal or DEFAULT_IDEAL.copy()
         self.weights = weights or DEFAULT_WEIGHTS.copy()
 
-        self._generator  = HypothesisGenerator(llm_client, model)
-        self._vectorizer = Vectorizer(llm_client, model)
+        _fail_loud = not self._config.mock_llm
+        self._generator  = HypothesisGenerator(llm_client, model, fail_loud=_fail_loud)
+        self._vectorizer = Vectorizer(llm_client, model, fail_loud=_fail_loud)
         self._evaluator  = Evaluator(self.ideal, self.weights)
         self._constraint = ConstraintEngine()
         self._self_corr  = SelfCorrector(self.ideal)

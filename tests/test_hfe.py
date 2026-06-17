@@ -568,3 +568,167 @@ def test_extract_json_array_from_prefixed_gemini_response():
     result = gen._extract_json_array(prefixed)
     assert len(result) == 2
     assert result[1]["id"] == "H2"
+
+
+# ─── 13. _json_utils 共通サニタイザ ─────────────────────────────────────────
+
+from hypothesis_field._json_utils import strip_fences, extract_json_array, extract_json_object
+
+
+def test_strip_fences_plain_text():
+    raw = '{"key": "value"}'
+    assert strip_fences(raw) == raw
+
+
+def test_strip_fences_removes_json_fence():
+    fenced = '```json\n{"key": "value"}\n```'
+    assert strip_fences(fenced) == '{"key": "value"}'
+
+
+def test_strip_fences_removes_bare_fence():
+    fenced = '```\n[1, 2, 3]\n```'
+    assert strip_fences(fenced) == '[1, 2, 3]'
+
+
+def test_extract_json_array_plain():
+    raw = '[{"id":"H1","accuracy":0.8}]'
+    result = extract_json_array(raw)
+    assert len(result) == 1
+    assert result[0]["id"] == "H1"
+
+
+def test_extract_json_array_with_prose_prefix():
+    raw = 'Sure! Here are the hypotheses:\n[{"id":"H1","accuracy":0.8}]'
+    result = extract_json_array(raw)
+    assert len(result) == 1
+
+
+def test_extract_json_array_with_fences():
+    raw = '```json\n[{"id":"H1","accuracy":0.8}]\n```'
+    result = extract_json_array(raw)
+    assert len(result) == 1
+
+
+def test_extract_json_array_returns_empty_on_invalid():
+    result = extract_json_array("not json at all")
+    assert result == []
+
+
+def test_extract_json_object_plain():
+    raw = '{"accuracy":0.8,"consistency":0.7,"risk":0.2,"novelty":0.6,"feasibility":0.9,"divergence":0.4}'
+    result = extract_json_object(raw)
+    assert result is not None
+    assert abs(result["accuracy"] - 0.8) < 1e-9
+
+
+def test_extract_json_object_with_prose():
+    raw = 'Here is the evaluation:\n{"accuracy":0.8,"consistency":0.7,"risk":0.2,"novelty":0.6,"feasibility":0.9,"divergence":0.4}'
+    result = extract_json_object(raw)
+    assert result is not None
+    assert "accuracy" in result
+
+
+def test_extract_json_object_with_fences():
+    raw = '```json\n{"accuracy":0.8,"consistency":0.7,"risk":0.2,"novelty":0.6,"feasibility":0.9,"divergence":0.4}\n```'
+    result = extract_json_object(raw)
+    assert result is not None
+    assert "novelty" in result
+
+
+def test_extract_json_object_returns_none_on_invalid():
+    result = extract_json_object("no json here")
+    assert result is None
+
+
+# ─── 14. fail_loud / retry ──────────────────────────────────────────────────
+
+
+class _AlwaysFailClient:
+    """常に例外を投げるダミーLLMクライアント（fail-loud テスト用）。"""
+    async def generate(self, *_, **__):
+        raise ValueError("simulated LLM failure")
+
+
+class _BadJsonClient:
+    """JSONではないテキストを返すダミーLLMクライアント（パース失敗テスト用）。"""
+    async def generate(self, *_, **__):
+        from hypothesis_field._providers._base import LLMResponse
+        return LLMResponse(content="not json at all", model="test", tokens_used=0)
+
+
+@pytest.mark.asyncio
+async def test_generator_fail_loud_raises_on_llm_failure():
+    gen = HypothesisGenerator(llm_client=_AlwaysFailClient(), fail_loud=True)
+    with pytest.raises(RuntimeError, match="fail"):
+        await gen.generate("テスト問題", count=2)
+
+
+@pytest.mark.asyncio
+async def test_generator_fail_loud_raises_on_bad_json():
+    gen = HypothesisGenerator(llm_client=_BadJsonClient(), fail_loud=True)
+    with pytest.raises(RuntimeError):
+        await gen.generate("テスト問題", count=2)
+
+
+@pytest.mark.asyncio
+async def test_generator_fail_silent_falls_back_on_bad_json():
+    """fail_loud=False（mock_llm=True 相当）では失敗時もフォールバック仮説を返す。"""
+    gen = HypothesisGenerator(llm_client=_BadJsonClient(), fail_loud=False)
+    hs = await gen.generate("テスト問題", count=2)
+    assert len(hs) == 2
+    for h in hs:
+        assert isinstance(h, Hypothesis)
+
+
+@pytest.mark.asyncio
+async def test_vectorizer_fail_loud_raises_on_bad_json():
+    vec = Vectorizer(llm_client=_BadJsonClient(), fail_loud=True)
+    h = Hypothesis(id="H0", content="test", vector=zero_vector())
+    with pytest.raises(RuntimeError):
+        await vec.vectorize([h])
+
+
+@pytest.mark.asyncio
+async def test_vectorizer_fail_silent_falls_back_on_bad_json():
+    vec = Vectorizer(llm_client=_BadJsonClient(), fail_loud=False)
+    h = Hypothesis(id="H0", content="test", vector=zero_vector())
+    result = await vec.vectorize([h])
+    assert any(v > 0.0 for v in result[0].vector.values())
+
+
+@pytest.mark.asyncio
+async def test_engine_fail_loud_propagates_to_run():
+    """mock_llm=False かつLLM失敗 → engine.run() も RuntimeError を上げること。"""
+    from hypothesis_field.field_engine import HypothesisFieldEngine, EngineConfig
+    config = EngineConfig(mock_llm=False, provider="ollama", iterations=1, hypothesis_count=2)
+    engine = HypothesisFieldEngine(config)
+    # _generatorのクライアントを壊れたものに差し替える
+    engine._generator._llm = _BadJsonClient()
+    engine._generator._model = "test"
+    with pytest.raises(RuntimeError):
+        await engine.run("fail-loud 統合テスト")
+
+
+# ─── 15. GeminiClient response_schema パラメータ ────────────────────────────
+
+
+def test_gemini_client_generate_accepts_response_schema(monkeypatch):
+    """response_schema パラメータが signature に存在し、Noneで問題なく呼び出せること。"""
+    import inspect
+    from hypothesis_field._providers._gemini import GeminiClient
+    sig = inspect.signature(GeminiClient.generate)
+    assert "response_schema" in sig.parameters
+
+
+def test_gemini_generator_response_schema_is_dict():
+    """generator._RESPONSE_SCHEMA が dict であり 'type':'array' を持つこと。"""
+    from hypothesis_field.generator import _RESPONSE_SCHEMA
+    assert isinstance(_RESPONSE_SCHEMA, dict)
+    assert _RESPONSE_SCHEMA.get("type") == "array"
+
+
+def test_gemini_vectorizer_response_schema_is_dict():
+    """vectorizer._VECTORIZE_RESPONSE_SCHEMA が dict であり 'type':'object' を持つこと。"""
+    from hypothesis_field.vectorizer import _VECTORIZE_RESPONSE_SCHEMA
+    assert isinstance(_VECTORIZE_RESPONSE_SCHEMA, dict)
+    assert _VECTORIZE_RESPONSE_SCHEMA.get("type") == "object"

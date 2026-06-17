@@ -4,15 +4,30 @@ LLMによる6次元ベクトル評価
 """
 from __future__ import annotations
 
-import json
 import logging
-import re
 from typing import Dict, List
 
 from .models import Hypothesis, VECTOR_KEYS, clamp
 from ._security import sanitize_input, mask_secrets, MAX_CONTENT_LENGTH
+from ._json_utils import extract_json_object
 
 logger = logging.getLogger(__name__)
+
+# JSON抽出失敗時の最大リトライ回数（初回含まず）
+_MAX_RETRIES = 2
+
+# ベクトル化ステージが期待するJSONスキーマ（Gemini response_schema 用）
+_VECTORIZE_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "accuracy":    {"type": "number"},
+        "consistency": {"type": "number"},
+        "risk":        {"type": "number"},
+        "novelty":     {"type": "number"},
+        "feasibility": {"type": "number"},
+        "divergence":  {"type": "number"},
+    },
+}
 
 
 class Vectorizer:
@@ -21,9 +36,11 @@ class Vectorizer:
     0.0〜1.0でスコア付けする。LLM不在時はルールベースで推定。
     """
 
-    def __init__(self, llm_client=None, model: str = "gemma3:12b"):
+    def __init__(self, llm_client=None, model: str = "gemma3:12b", fail_loud: bool = False):
         self._llm = llm_client
         self._model = model
+        # fail_loud=True: mock_llm=False（実プロバイダー）時に無言フォールバックを禁止する
+        self._fail_loud = fail_loud
 
     # LLMを呼ぶのは「ベクトルが全軸0.0の仮説」だけ。
     # generator が生成＋評価を1 call で完結 → source="generated" でも vector 設定済み。
@@ -37,14 +54,37 @@ class Vectorizer:
         for h in hypotheses:
             if not self._needs_llm(h):
                 continue  # ベクトル計算済み or 数式由来 → スキップ
-            try:
-                if self._llm is not None:
-                    h.vector = await self._vectorize_with_llm(h.content)
-                else:
+
+            if self._llm is not None:
+                last_err: Exception | None = None
+                for attempt in range(1 + _MAX_RETRIES):
+                    try:
+                        h.vector = await self._vectorize_with_llm(h.content)
+                        last_err = None
+                        break
+                    except Exception as e:
+                        last_err = e
+                        logger.debug(
+                            f"[Vectorizer] {h.id} 試行{attempt + 1}/{1 + _MAX_RETRIES} 失敗: "
+                            f"{type(e).__name__}: {mask_secrets(str(e))[:200]}"
+                        )
+
+                if last_err is not None:
+                    if self._fail_loud:
+                        raise RuntimeError(
+                            f"[Vectorizer] {h.id} のJSONパースが {1 + _MAX_RETRIES} 回失敗しました。"
+                            " mock_llm=False のため無言フォールバックを行いません。"
+                            f" 最後のエラー: {mask_secrets(str(last_err))[:300]}"
+                        ) from last_err
+
+                    logger.warning(
+                        f"[Vectorizer] {h.id} ベクトル化失敗（{1 + _MAX_RETRIES} 回試行）"
+                        f"→ ルール推定: {mask_secrets(str(last_err))[:200]}"
+                    )
                     h.vector = self._infer_vector(h.content, h.source)
-            except Exception as e:
-                logger.debug(f"[Vectorizer] {h.id} ベクトル化失敗 → ルール推定: {type(e).__name__}: {mask_secrets(str(e))[:200]}")
+            else:
                 h.vector = self._infer_vector(h.content, h.source)
+
         return hypotheses
 
     _VECTORIZE_SYSTEM = (
@@ -69,14 +109,14 @@ class Vectorizer:
             system=self._VECTORIZE_SYSTEM,
             model=self._model,
             temperature=0.3,
+            response_schema=_VECTORIZE_RESPONSE_SCHEMA,
         )
         raw = response.content.strip()
 
-        match = re.search(r'\{[^}]+\}', raw, re.DOTALL)
-        if not match:
-            raise ValueError("JSONオブジェクトが見つかりません")
+        data = extract_json_object(raw)
+        if data is None:
+            raise ValueError(f"JSONオブジェクトが見つかりません。LLM出力先頭: {raw[:100]}")
 
-        data = json.loads(match.group())
         return {k: clamp(float(data.get(k, 0.5))) for k in VECTOR_KEYS}
 
     def _infer_vector(self, content: str, source: str) -> Dict[str, float]:
@@ -85,7 +125,6 @@ class Vectorizer:
             "accuracy": 0.70, "consistency": 0.75, "risk": 0.25,
             "novelty": 0.55, "feasibility": 0.75, "divergence": 0.45,
         }
-        low = content.lower()
         if "安定" in content or "慎重" in content or "実績" in content:
             base.update({"accuracy": 0.85, "consistency": 0.85, "risk": 0.15, "novelty": 0.35, "feasibility": 0.90})
         elif "革新" in content or "新しい" in content or "従来の枠" in content:

@@ -4,15 +4,35 @@ LLMを使った多仮説生成（3〜5本）+ ベクトル評価を1回のLLM ca
 """
 from __future__ import annotations
 
-import json
 import logging
-import re
 from typing import List
 
 from .models import Hypothesis, VECTOR_KEYS, clamp
 from ._security import sanitize_input, sanitize_output, mask_secrets, MAX_PROBLEM_LENGTH
+from ._json_utils import extract_json_array
 
 logger = logging.getLogger(__name__)
+
+# JSON抽出失敗時の最大リトライ回数（初回含まず）
+_MAX_RETRIES = 2
+
+# 生成ステージが期待するJSONスキーマ（Gemini response_schema 用）
+_RESPONSE_SCHEMA = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "id":          {"type": "string"},
+            "content":     {"type": "string"},
+            "accuracy":    {"type": "number"},
+            "consistency": {"type": "number"},
+            "risk":        {"type": "number"},
+            "novelty":     {"type": "number"},
+            "feasibility": {"type": "number"},
+            "divergence":  {"type": "number"},
+        },
+    },
+}
 
 
 class HypothesisGenerator:
@@ -22,18 +42,41 @@ class HypothesisGenerator:
     LLM不在時はルールベースのフォールバックで返す。
     """
 
-    def __init__(self, llm_client=None, model: str = "gemma3:12b"):
+    def __init__(self, llm_client=None, model: str = "gemma3:12b", fail_loud: bool = False):
         self._llm = llm_client
         self._model = model
+        # fail_loud=True: mock_llm=False（実プロバイダー）時に無言フォールバックを禁止する
+        self._fail_loud = fail_loud
 
     async def generate(self, problem: str, count: int = 3) -> List[Hypothesis]:
         # 入力サニタイズ（プロンプトインジェクション・DoS対策）
         problem = sanitize_input(problem, max_length=MAX_PROBLEM_LENGTH)
-        try:
-            if self._llm is not None:
-                return await self._generate_with_llm(problem, count)
-        except Exception as e:
-            logger.debug(f"[Generator] LLM生成失敗 → フォールバック: {type(e).__name__}: {mask_secrets(str(e))[:200]}")
+
+        if self._llm is not None:
+            last_err: Exception | None = None
+            for attempt in range(1 + _MAX_RETRIES):
+                try:
+                    return await self._generate_with_llm(problem, count)
+                except Exception as e:
+                    last_err = e
+                    logger.debug(
+                        f"[Generator] 試行{attempt + 1}/{1 + _MAX_RETRIES} 失敗: "
+                        f"{type(e).__name__}: {mask_secrets(str(e))[:200]}"
+                    )
+
+            # 全リトライ消費後
+            if self._fail_loud:
+                raise RuntimeError(
+                    f"[Generator] LLM応答のJSONパースが {1 + _MAX_RETRIES} 回失敗しました。"
+                    " mock_llm=False のため無言フォールバックを行いません。"
+                    f" 最後のエラー: {mask_secrets(str(last_err))[:300]}"
+                ) from last_err
+
+            logger.warning(
+                f"[Generator] LLM生成失敗（{1 + _MAX_RETRIES} 回試行）→ mock フォールバック: "
+                f"{mask_secrets(str(last_err))[:200]}"
+            )
+
         return self._fallback(problem, count)
 
     # system プロンプト（指示部分）— ユーザー入力と分離することでプロンプトインジェクションを緩和
@@ -61,6 +104,7 @@ class HypothesisGenerator:
             model=self._model,
             temperature=0.8,
             max_tokens=2048,
+            response_schema=_RESPONSE_SCHEMA,
         )
         raw = response.content.strip()
 
@@ -81,39 +125,9 @@ class HypothesisGenerator:
         return hypotheses
 
     def _extract_json_array(self, raw: str) -> list:
-        """LLMが余計な説明を付けても JSON 配列を抽出できるよう複数パターンを試す"""
-        # パターン1: ```json ... ``` ブロック
-        m = re.search(r'```(?:json)?\s*(\[.*?\])\s*```', raw, re.DOTALL)
-        if m:
-            try:
-                return json.loads(m.group(1))
-            except Exception:
-                pass
-
-        # パターン2: [ ... ] の最初の出現
-        m = re.search(r'(\[.*\])', raw, re.DOTALL)
-        if m:
-            try:
-                return json.loads(m.group(1))
-            except Exception:
-                # 末尾が壊れていたら最後の } で打ち切って修復
-                text = m.group(1)
-                last_close = text.rfind('}')
-                if last_close != -1:
-                    try:
-                        return json.loads(text[:last_close + 1] + ']')
-                    except Exception:
-                        pass
-
-        # パターン3: 個別の {...} を全部拾う
-        objects = re.findall(r'\{[^{}]+\}', raw, re.DOTALL)
-        if objects:
-            try:
-                return [json.loads(o) for o in objects]
-            except Exception:
-                pass
-
-        return []
+        """LLMが余計な説明を付けても JSON 配列を抽出できるよう複数パターンを試す。
+        共通ユーティリティ extract_json_array に委譲する。"""
+        return extract_json_array(raw)
 
     def _fallback(self, problem: str, count: int) -> List[Hypothesis]:
         templates = [
